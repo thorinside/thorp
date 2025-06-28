@@ -22,14 +22,57 @@ Thorp is a powerful and intuitive Lua-based sequencer designed for creating comp
 
 ---
 
-## 🎶 Usage
+## 🎶 Workflow
 
-Once installed, you can load Thorp as a script in your host application. The main interface provides access to the four main views:
+Thorp's workflow is centered around four main pages: **Slot**, **Pattern**, **Scale**, and **Song**. The general idea is to configure arpeggio slots with patterns and notes, and then sequence those slots in the Song page. Arpeggios are driven by MIDI note input, which can be latched and saved to slots.
 
-*   **Pattern View:** Create and edit your musical patterns.
-*   **Scale View:** Define the musical scale for your patterns.
-*   **Slot View:** Arrange your patterns into slots.
-*   **Song View:** Sequence your slots to create a full song.
+### MIDI Input and Latching
+
+Arpeggios are initially driven by MIDI note input. When you play notes on your MIDI controller, they are added to a temporary buffer. These "latched" notes are used to generate arpeggios in real-time. You can then save these latched notes to a specific slot for later use.
+
+### Page 1: Slot
+
+The **Slot** page is where you manage the 16 arpeggiator slots. Each slot can hold a set of notes, a pattern, and other parameters.
+
+**Step-by-step guide:**
+
+1.  **Select a Slot:** Use **Encoder 1** to choose one of the 16 available slots.
+2.  **Latch Notes:** Play some notes on your MIDI controller. These notes will be latched and used for the arpeggio.
+3.  **Save Latched Notes:** Press **Pot 2** to save the latched notes to the selected slot.
+4.  **Adjust Length and Offset:** Use **Encoder 2** to adjust the length and offset of the arpeggio. Press **Encoder 2** to toggle between length and offset mode.
+5.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
+
+### Page 2: Pattern
+
+The **Pattern** page is where you assign a rhythmic pattern to the current slot.
+
+**Step-by-step guide:**
+
+1.  **Select a Pattern:** Use **Pot 1** or **Encoder 1** to choose a pattern from the list.
+2.  **Assign Pattern:** Press **Pot 2** to assign the selected pattern to the current slot.
+3.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
+
+### Page 3: Scale
+
+The **Scale** page is where you can set a global scale and root note to quantize the output of the arpeggiator.
+
+**Step-by-step guide:**
+
+1.  **Select Root Note:** Use **Encoder 1** to choose the root note of the scale.
+2.  **Select Scale:** Use **Encoder 2** to choose a scale from the list.
+3.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
+
+### Page 4: Song
+
+The **Song** page is where you can chain together your arpeggio slots to create a song.
+
+**Step-by-step guide:**
+
+1.  **Add Slot to Chain:** Use **Encoder 1** to select a slot, then press **Encoder 1** to add it to the song chain.
+2.  **Select Play Position:** Use **Encoder 2** to move the playback cursor within the chain.
+3.  **Remove Slot from Chain:** Press **Encoder 2** to remove the slot at the current playback position.
+4.  **Cycle Play Mode:** Press **Pot 2** to cycle through the play modes: **Off**, **Jam** (plays the currently latched notes), and **Song** (plays the song chain).
+5.  **Select Sequence Mode:** Use **Pot 3** to choose a sequence mode for song playback: **Seq**, **Ping-Pong**, **Rnd-Walk**, or **Random**.
 
 ---
 

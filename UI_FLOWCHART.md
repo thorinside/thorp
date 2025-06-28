@@ -12,6 +12,12 @@ graph TD
         PageSwitch -- Cycles through --> SongPage
     end
 
+    subgraph MIDI Input
+        MIDIIn[MIDI Note On/Off] --> LatchNotes{Latch Notes}
+        LatchNotes -- In Jam Mode --> Arpeggiate
+        LatchNotes -- Can be saved --> SlotPage
+    end
+
     subgraph Page: Slot
         SlotPage -- Encoder 1 Turn --> SelectArpSlot
         SlotPage -- Encoder 1 Push --> AddSlotToChain
@@ -44,6 +50,10 @@ graph TD
         SongPage -- Pot 3 Turn --> SelectSequenceMode
     end
 
+    subgraph Arpeggiator
+        Arpeggiate -- Plays notes --> MIDIOut[MIDI Note Out]
+    end
+
     style HelpScreen fill:#f9f,stroke:#333,stroke-width:2px
     style ExitApp fill:#f00,stroke:#333,stroke-width:2px
 ```
@@ -61,7 +71,14 @@ These controls are accessible from any of the four main pages.
 -   **Button 3 (Help):** Toggles the visibility of the on-screen help menu, which displays the function of each control for the current page.
 -   **Button 2 (Exit):** Exits the plugin's UI.
 
---- 
+---
+
+### MIDI Input
+
+-   **MIDI Note On/Off:** When a MIDI note is received, it is added to a temporary "latch" buffer.
+-   **Latch Notes:** In **Jam Mode**, the latched notes are immediately used by the arpeggiator. These notes can also be saved to a slot from the **Slot Page**.
+
+---
 
 ### Page 1: Slot
 
@@ -74,7 +91,7 @@ This page is for configuring the 16 arpeggiator slots.
 -   **Pot 2 Push (Save Notes):** Saves any currently latched MIDI notes to the selected slot.
 -   **Pot 3 Turn (Gate Length):** Adjusts the gate length for all notes played by the arpeggiator.
 
---- 
+---
 
 ### Page 2: Pattern
 
