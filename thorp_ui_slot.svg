@@ -1,0 +1,27 @@
+<svg width="256" height="80" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="10px">
+  <rect width="100%" height="100%" fill="#1a1a1a" />
+  <style>
+    .header { font-size: 9px; fill: #aaaaaa; text-transform: uppercase; }
+    .label { fill: #cccccc; }
+    .value { fill: #ffffff; }
+    .highlight { fill: #00ff00; }
+  </style>
+  
+  <!-- Header -->
+  <text x="10" y="12" class="header">THORP - slot</text>
+
+  <!-- Main Content -->
+  <text x="10" y="30" class="label">Slot:</text>
+  <text x="70" y="30" class="value">1</text>
+
+  <text x="10" y="42" class="label">Pattern:</text>
+  <text x="70" y="42" class="value">Ascending</text>
+
+  <text x="180" y="42" class="value"><tspan class="highlight">&gt;</tspan>L:8  O:0</text>
+
+  <text x="10" y="54" class="label">Gate:</text>
+  <text x="70" y="54" class="value">50%</text>
+
+  <text x="10" y="66" class="label">Slot Notes:</text>
+  <text x="90" y="66" class="value">C4 E4 G4 A4</text>
+</svg>

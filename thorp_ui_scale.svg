@@ -1,0 +1,21 @@
+<svg width="256" height="80" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="10px">
+  <rect width="100%" height="100%" fill="#1a1a1a" />
+  <style>
+    .header { font-size: 9px; fill: #aaaaaa; text-transform: uppercase; }
+    .label { fill: #cccccc; }
+    .value { fill: #ffffff; }
+  </style>
+  
+  <!-- Header -->
+  <text x="10" y="12" class="header">THORP - scale</text>
+
+  <!-- Main Content -->
+  <text x="10" y="30" class="label">Root:</text>
+  <text x="70" y="30" class="value">C</text>
+
+  <text x="10" y="42" class="label">Scale:</text>
+  <text x="70" y="42" class="value">Ionian</text>
+
+  <text x="10" y="54" class="label">Gate:</text>
+  <text x="70" y="54" class="value">50%</text>
+</svg>
