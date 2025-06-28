@@ -80,10 +80,10 @@ The **Song** page is where you can chain together your arpeggio slots to create 
 
 ### Connecting to Instruments
 
-Thorp sends MIDI data, so you'll need to connect it to a MIDI-compatible instrument or plugin. Here's a basic setup:
+Thorp sends CV (Control Voltage) data for pitch and gate, so you'll need to connect it to a CV-compatible instrument or module. Here's a basic setup:
 
-1.  **MIDI Out:** Set the MIDI output of the Thorp script to your desired instrument.
-2.  **Channels:** Ensure the MIDI channel of Thorp matches the MIDI channel of your instrument.
+1.  **CV Out:** Connect the Gate and V/Oct outputs of Thorp to your desired instrument.
+2.  **MIDI In:** Ensure the MIDI channel of your controller matches the MIDI channel of Thorp.
 3.  **Clock:** Sync Thorp to your host's clock for tight timing.
 
 ### Advanced Patching

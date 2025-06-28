@@ -51,7 +51,7 @@ graph TD
     end
 
     subgraph Arpeggiator
-        Arpeggiate -- Plays notes --> MIDIOut[MIDI Note Out]
+        Arpeggiate -- Plays notes --> CVOut[CV Pitch/Gate Out]
     end
 
     style HelpScreen fill:#f9f,stroke:#333,stroke-width:2px
