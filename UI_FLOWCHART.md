@@ -29,15 +29,18 @@ graph TD
     end
 
     subgraph Page: Pattern
-        PatternPage -- Pot 1 Turn --> SelectPattern
-        PatternPage -- Encoder 1 Turn --> SelectPattern
-        PatternPage -- Pot 2 Push --> AssignPatternToSlot
+        PatternPage -- Pot 1 Turn --> AdjustGateProbability
+        PatternPage -- Encoder 1 Turn --> SelectRhythmPattern
+        PatternPage -- Encoder 2 Turn --> SelectVelocityPattern
+        PatternPage -- Pot 2 Push --> AssignBothPatternsToSlot
         PatternPage -- Pot 3 Turn --> AdjustGateLength
     end
 
     subgraph Page: Scale
         ScalePage -- Encoder 1 Turn --> SelectRootNote
         ScalePage -- Encoder 2 Turn --> SelectScale
+        ScalePage -- Pot 1 Turn --> AdjustOctaveJumpChance
+        ScalePage -- Pot 2 Turn --> AdjustOctaveJumpRange
         ScalePage -- Pot 3 Turn --> AdjustGateLength
     end
 
@@ -95,21 +98,24 @@ This page is for configuring the 16 arpeggiator slots.
 
 ### Page 2: Pattern
 
-Assigns rhythmic patterns to arpeggiator slots.
+Assigns rhythmic and velocity patterns, plus configures gate probability.
 
--   **Pot 1 Turn (Select Pattern):** Selects a rhythmic pattern from the internal list.
--   **Encoder 1 Turn (Select Pattern):** Also selects a rhythmic pattern (alternative control).
--   **Pot 2 Push (Assign Pattern):** Assigns the selected pattern to the current arp slot.
+-   **Pot 1 Turn (Gate Probability):** Sets the probability (0-100%) that each step's gate will fire.
+-   **Encoder 1 Turn (Rhythm Pattern):** Selects a rhythmic pattern from the internal list.
+-   **Encoder 2 Turn (Velocity Pattern):** Selects a velocity pattern from the internal list.
+-   **Pot 2 Push (Assign Both):** Assigns both rhythm and velocity patterns to the current arp slot.
 -   **Pot 3 Turn (Gate Length):** Adjusts the gate length.
 
 ---
 
 ### Page 3: Scale
 
-Sets the musical scale and root note for quantization.
+Sets the musical scale and configures octave jump behavior.
 
 -   **Encoder 1 Turn (Select Root):** Selects the root note of the scale (C, C#, D, etc.).
 -   **Encoder 2 Turn (Select Scale):** Selects a musical scale from the internal list (Ionian, Dorian, etc.).
+-   **Pot 1 Turn (Octave Jump Chance):** Sets the probability (0-100%) of octave jumps occurring.
+-   **Pot 2 Turn (Octave Jump Range):** Sets the range (±1-3 octaves) of octave jumps.
 -   **Pot 3 Turn (Gate Length):** Adjusts the gate length.
 
 ---

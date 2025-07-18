@@ -44,23 +44,27 @@ The **Slot** page is where you manage the 16 arpeggiator slots. Each slot can ho
 
 ### Page 2: Pattern
 
-The **Pattern** page is where you assign a rhythmic pattern to the current slot.
+The **Pattern** page is where you work with rhythmic and velocity patterns, plus gate probability.
 
 **Step-by-step guide:**
 
-1.  **Select a Pattern:** Use **Pot 1** or **Encoder 1** to choose a pattern from the list.
-2.  **Assign Pattern:** Press **Pot 2** to assign the selected pattern to the current slot.
-3.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
+1.  **Select Rhythm Pattern:** Use **Encoder 1** to choose a rhythmic pattern from the list.
+2.  **Select Velocity Pattern:** Use **Encoder 2** to choose a velocity pattern from the list.
+3.  **Adjust Gate Probability:** Use **Pot 1** to set the probability (0-100%) that each step's gate will fire.
+4.  **Assign Both Patterns:** Press **Pot 2** to save both rhythm and velocity patterns to the current slot.
+5.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
 
 ### Page 3: Scale
 
-The **Scale** page is where you can set a global scale and root note to quantize the output of the arpeggiator.
+The **Scale** page is where you set musical scales and configure octave jump behavior.
 
 **Step-by-step guide:**
 
 1.  **Select Root Note:** Use **Encoder 1** to choose the root note of the scale.
 2.  **Select Scale:** Use **Encoder 2** to choose a scale from the list.
-3.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
+3.  **Adjust Octave Jump Chance:** Use **Pot 1** to set the probability (0-100%) of octave jumps occurring.
+4.  **Adjust Octave Jump Range:** Use **Pot 2** to set the range (±1-3 octaves) of octave jumps.
+5.  **Adjust Gate Length:** Use **Pot 3** to change the gate length of the arpeggio.
 
 ### Page 4: Song
 
@@ -82,7 +86,7 @@ The **Song** page is where you can chain together your arpeggio slots to create 
 
 Thorp sends CV (Control Voltage) data for pitch and gate, so you'll need to connect it to a CV-compatible instrument or module. Here's a basic setup:
 
-1.  **CV Out:** Connect the Gate and V/Oct outputs of Thorp to your desired instrument.
+1.  **CV Out:** Connect the Gate, V/Oct, and Velocity outputs of Thorp to your desired instrument.
 2.  **MIDI In:** Ensure the MIDI channel of your controller matches the MIDI channel of Thorp.
 3.  **Clock:** Sync Thorp to your host's clock for tight timing.
 
