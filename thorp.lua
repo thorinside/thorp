@@ -1,4 +1,4 @@
--- Thorp Arpeggiator v2.1
+-- Thorp Arpeggiator v3.0
 -- 16 ARP slots + song sequencing
 
 -- Page constants
