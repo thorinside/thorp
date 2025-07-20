@@ -13,6 +13,186 @@ local sequenceModeLabels = {"seq", "pingpong", "rndwalk", "random"}
 local PLAY_MODE_OFF, PLAY_MODE_JAM, PLAY_MODE_SONG = 1, 2, 3
 local playModeLabels = {"Off", "Jam", "Song"}
 
+-- Pot takeover configuration
+local POT_TAKEOVER_THRESHOLD = 0.02
+local POT_TAKEOVER_SCALE_FACTOR = 0.7
+local POT_COUNT = 3
+
+-- Initial pot values by type
+local POT_INITIAL_VALUES = {
+    GATE_LENGTH = 0.5,      -- 50%
+    GATE_PROBABILITY = 1.0,  -- 100%
+    OCT_JUMP = 0.0,         -- 0%
+    OCT_RANGE = 0.0,        -- Maps to 1
+    GLOBAL_OCT = 0.5,       -- 100%
+    SEQ_MODE = 0.25         -- Maps to MODE_SEQ
+}
+
+--------------------------------------------------------------------------------
+-- REUSABLE LIBRARY MODULES
+--------------------------------------------------------------------------------
+
+-- SmoothPotTakeover Library - Handles smooth pot value transitions
+local SmoothPotTakeover = {}
+SmoothPotTakeover.__index = SmoothPotTakeover
+
+function SmoothPotTakeover:new(config)
+    local instance = {
+        threshold = config.threshold or 0.02,
+        scaleFactor = config.scaleFactor or 0.7,
+        potCount = config.potCount or 3,
+        physicalPots = {},
+        takeover = {
+            active = {},
+            startPhysical = {}
+        }
+    }
+    
+    -- Initialize arrays
+    for i = 1, instance.potCount do
+        instance.physicalPots[i] = 0.5
+        instance.takeover.active[i] = false
+        instance.takeover.startPhysical[i] = 0
+    end
+    
+    setmetatable(instance, self)
+    return instance
+end
+
+function SmoothPotTakeover:processTurn(potNum, rawValue, currentPage, pageValues)
+    local logical = pageValues[currentPage] and pageValues[currentPage][potNum]
+    if not logical then return nil end
+    
+    local distance = math.abs(rawValue - logical)
+    
+    if not self.takeover.active[potNum] then
+        -- Direct control
+        self.physicalPots[potNum] = rawValue
+        return rawValue
+    end
+    
+    -- Takeover mode
+    if distance < self.threshold then
+        self.takeover.active[potNum] = false
+        self.physicalPots[potNum] = rawValue
+        return rawValue
+    else
+        -- Apply scaling
+        local delta = rawValue - self.physicalPots[potNum]
+        local scale = 1 - (distance * self.scaleFactor)
+        local scaled = logical + (delta * scale)
+        self.physicalPots[potNum] = rawValue
+        return math.max(0, math.min(1, scaled))
+    end
+end
+
+function SmoothPotTakeover:activateForPageChange(fromPage, toPage, pageValues)
+    for i = 1, self.potCount do
+        local oldValue = pageValues[fromPage] and pageValues[fromPage][i]
+        local newValue = pageValues[toPage] and pageValues[toPage][i]
+        
+        if oldValue and newValue and math.abs(self.physicalPots[i] - newValue) > self.threshold then
+            self.takeover.active[i] = true
+            self.takeover.startPhysical[i] = self.physicalPots[i]
+        end
+    end
+end
+
+function SmoothPotTakeover:getSetupValues(currentPage, pageValues)
+    local values = {}
+    for i = 1, self.potCount do
+        values[i] = (pageValues[currentPage] and pageValues[currentPage][i]) or 0.5
+    end
+    return values
+end
+
+-- PotDefinitionManager Library - Manages pot configurations and logical values
+local PotDefinitionManager = {}
+PotDefinitionManager.__index = PotDefinitionManager
+
+function PotDefinitionManager:new(definitions)
+    local instance = {
+        definitions = definitions,
+        logicalValues = {}
+    }
+    
+    -- Initialize logical values from definitions
+    for page, defs in pairs(definitions) do
+        instance.logicalValues[page] = {}
+        for i, def in ipairs(defs) do
+            instance.logicalValues[page][i] = def.type == "continuous" and def.initial or nil
+        end
+    end
+    
+    setmetatable(instance, self)
+    return instance
+end
+
+function PotDefinitionManager:getLogicalValues()
+    return self.logicalValues
+end
+
+function PotDefinitionManager:updateValue(page, potNum, value)
+    if self.logicalValues[page] then
+        self.logicalValues[page][potNum] = value
+    end
+end
+
+function PotDefinitionManager:getDefinition(page, potNum)
+    return self.definitions[page] and self.definitions[page][potNum]
+end
+
+-- ActionDispatcher Library - Generic action routing system
+local ActionDispatcher = {}
+ActionDispatcher.__index = ActionDispatcher
+
+function ActionDispatcher:new(actions, defaultHandler)
+    local instance = {
+        actions = actions,
+        defaultHandler = defaultHandler
+    }
+    setmetatable(instance, self)
+    return instance
+end
+
+function ActionDispatcher:dispatch(context, key1, key2, ...)
+    local action = self.actions[key1] and self.actions[key1][key2]
+    if action then
+        return action(context, ...)
+    elseif self.defaultHandler then
+        return self.defaultHandler(context, key1, key2, ...)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- END OF LIBRARY MODULES
+--------------------------------------------------------------------------------
+
+-- Centralized pot configuration
+local potDefinitions = {
+    [PAGE_SLOT] = {
+        {type = "push_only", label = "Copy/Paste"},
+        {type = "push_only", label = "Save Notes"},
+        {type = "continuous", label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
+    },
+    [PAGE_PATTERN] = {
+        {type = "continuous", label = "G.Prob", initial = POT_INITIAL_VALUES.GATE_PROBABILITY},
+        {type = "push_only", label = "Assign Both"},
+        {type = "continuous", label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
+    },
+    [PAGE_SCALE] = {
+        {type = "continuous", label = "Oct Jump", initial = POT_INITIAL_VALUES.OCT_JUMP},
+        {type = "continuous", label = "Oct Range", initial = POT_INITIAL_VALUES.OCT_RANGE},
+        {type = "continuous", label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
+    },
+    [PAGE_SONG] = {
+        {type = "continuous", label = "G.Oct Jump", initial = POT_INITIAL_VALUES.GLOBAL_OCT},
+        {type = "push_only", label = "Play Mode"},
+        {type = "continuous", label = "Seq Mode", initial = POT_INITIAL_VALUES.SEQ_MODE}
+    }
+}
+
+
 -- Scale definitions (40+)
 local scaleNames = {
     "Ionian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Aeolian",
@@ -187,6 +367,60 @@ local helpText = {
         encoders = {"Add Slot", "Position"}
     }
 }
+
+-- Initialize library modules
+local potTakeoverSystem = SmoothPotTakeover:new({
+    threshold = POT_TAKEOVER_THRESHOLD,
+    scaleFactor = POT_TAKEOVER_SCALE_FACTOR,
+    potCount = POT_COUNT
+})
+
+local potManager = PotDefinitionManager:new(potDefinitions)
+local logicalPots = potManager:getLogicalValues()
+
+local lastPage = PAGE_SLOT
+
+-- Pot action handlers by page and pot number
+local potActions = {
+    [PAGE_PATTERN] = {
+        [1] = function(self, value)
+            local newVal = math.floor(value * 100)
+            self:setParameter(paramIndexes.stepProbability, newVal)
+        end
+    },
+    [PAGE_SCALE] = {
+        [1] = function(self, value)
+            local slot = arps[arpSlot]
+            slot.octaveJumpChance = math.floor(value * 100)
+            msg, msgT = "S" .. arpSlot .. " Oct Jump: " .. slot.octaveJumpChance .. "%", 30
+        end,
+        [2] = function(self, value)
+            local slot = arps[arpSlot]
+            slot.octaveJumpRange = math.max(1, math.min(3, math.floor(value * 3) + 1))
+            msg, msgT = "S" .. arpSlot .. " Oct Range: ±" .. slot.octaveJumpRange, 30
+        end
+    },
+    [PAGE_SONG] = {
+        [1] = function(self, value)
+            local newVal = math.floor(value * 200)
+            self:setParameter(paramIndexes.globalOctaveJump, newVal)
+        end,
+        [3] = function(self, value)
+            local p_idx = paramIndexes.sequenceMode
+            local newVal = math.min(#sequenceModeLabels, math.floor(value * #sequenceModeLabels) + 1)
+            self:setParameter(p_idx, newVal)
+            msg, msgT = "Seq. Mode: " .. sequenceModeLabels[newVal], 30
+        end
+    }
+}
+
+-- Initialize action dispatcher with default handler for pot 3 (gate length)
+local potDispatcher = ActionDispatcher:new(potActions, function(self, page, potNum, value)
+    if potNum == 3 and page ~= PAGE_SONG then
+        gateLen = math.floor(value * 100)
+        self:setParameter(paramIndexes.gateLen, gateLen)
+    end
+end)
 
 local paramIndexes = {
     scale = 1,
@@ -642,31 +876,34 @@ return {
 
     ui = function(self) return true end,
 
+    setupUi = function(self)
+        -- Called when the UI is focused on this script if ui() returns true.
+        -- Returns the current normalized values for the parameters controlled by pots
+        -- to synchronize the hardware display/behavior.
+        return potTakeoverSystem:getSetupValues(page, logicalPots)
+    end,
+    
+    -- Handle pot turn with library modules
+    handlePotTurn = function(self, potNum, value)
+        local processedValue = potTakeoverSystem:processTurn(potNum, value, page, logicalPots)
+        if processedValue then
+            potManager:updateValue(page, potNum, processedValue)
+            potDispatcher:dispatch(self, page, potNum, processedValue)
+        end
+    end,
+    
+    -- Activate takeover for page change
+    activateTakeoverForPageChange = function(self, fromPage, toPage)
+        potTakeoverSystem:activateForPageChange(fromPage, toPage, logicalPots)
+    end,
+
     -- UI callbacks
     pot1Turn = function(self, v)
-        if page == PAGE_PATTERN then
-            -- Gate Probability control
-            local newVal = math.floor(v * 100)
-            self:setParameter(paramIndexes.stepProbability, newVal)
-        elseif page == PAGE_SCALE then
-            -- Octave Jump Chance control
-            local slot = arps[arpSlot]
-            slot.octaveJumpChance = math.floor(v * 100)
-            msg, msgT = "S" .. arpSlot .. " Oct Jump: " .. slot.octaveJumpChance .. "%", 30
-        elseif page == PAGE_SONG then
-            -- Global Octave Jump control
-            local newVal = math.floor(v * 200)
-            self:setParameter(paramIndexes.globalOctaveJump, newVal)
-        end
+        self:handlePotTurn(1, v)
     end,
 
     pot2Turn = function(self, v)
-        if page == PAGE_SCALE then
-            -- Octave Jump Range control
-            local slot = arps[arpSlot]
-            slot.octaveJumpRange = math.max(1, math.min(3, math.floor(v * 3) + 1))
-            msg, msgT = "S" .. arpSlot .. " Oct Range: ±" .. slot.octaveJumpRange, 30
-        end
+        self:handlePotTurn(2, v)
     end,
 
     pot1Push = function(self)
@@ -766,16 +1003,7 @@ return {
     end,
 
     pot3Turn = function(self, v)
-        if page == PAGE_SONG then
-            local p_idx = paramIndexes.sequenceMode
-            local newVal = math.min(#sequenceModeLabels,
-                                    math.floor(v * #sequenceModeLabels) + 1)
-            self:setParameter(p_idx, newVal)
-            msg, msgT = "Seq. Mode: " .. sequenceModeLabels[newVal], 30
-        else
-            gateLen = math.floor(v * 100)
-            self:setParameter(paramIndexes.gateLen, gateLen)
-        end
+        self:handlePotTurn(3, v)
     end,
 
     encoder1Turn = function(self, d)
@@ -890,8 +1118,10 @@ return {
 
     button1Push = function(self)
         -- Previous Page
+        lastPage = page
         page = page - 1
         if page < PAGE_SLOT then page = PAGE_SONG end
+        self:activateTakeoverForPageChange(lastPage, page)
     end,
 
     button2Push = function(self)
@@ -906,8 +1136,10 @@ return {
 
     button4Push = function(self)
         -- Next Page
+        lastPage = page
         page = page + 1
         if page > PAGE_SONG then page = PAGE_SLOT end
+        self:activateTakeoverForPageChange(lastPage, page)
     end,
 
     draw = function(self)
