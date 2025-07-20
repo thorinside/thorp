@@ -13,6 +13,9 @@ local sequenceModeLabels = {"seq", "pingpong", "rndwalk", "random"}
 local PLAY_MODE_OFF, PLAY_MODE_JAM, PLAY_MODE_SONG = 1, 2, 3
 local playModeLabels = {"Off", "Jam", "Song"}
 
+-- Pot type constants
+local POT_TYPE_PUSH_ONLY, POT_TYPE_CONTINUOUS = 1, 2
+
 -- Pot takeover configuration
 local POT_TAKEOVER_THRESHOLD = 0.02
 local POT_TAKEOVER_SCALE_FACTOR = 0.7
@@ -24,8 +27,9 @@ local POT_INITIAL_VALUES = {
     GATE_PROBABILITY = 1.0,  -- 100%
     OCT_JUMP = 0.0,         -- 0%
     OCT_RANGE = 0.0,        -- Maps to 1
-    GLOBAL_OCT = 0.5,       -- 100%
-    SEQ_MODE = 0.25         -- Maps to MODE_SEQ
+    GLOBAL_OCT = 0.0,       -- 0%
+    SEQ_MODE = 0.25,        -- Maps to MODE_SEQ
+    SLOT_SELECT = 0.0       -- Maps to slot 1
 }
 
 --------------------------------------------------------------------------------
@@ -77,12 +81,23 @@ function SmoothPotTakeover:processTurn(potNum, rawValue, currentPage, pageValues
         self.physicalPots[potNum] = rawValue
         return rawValue
     else
-        -- Apply scaling
+        -- Industry standard approach: "Soft takeover with edge priority"
         local delta = rawValue - self.physicalPots[potNum]
-        local scale = 1 - (distance * self.scaleFactor)
-        local scaled = logical + (delta * scale)
+        local scale = math.max(0.1, 1 - (distance * self.scaleFactor))
+        local newValue = logical + (delta * scale)
+        
+        -- Edge priority: as we approach 0 or 1, gradually increase influence
+        local edgeInfluence = 0
+        if rawValue < 0.1 then
+            edgeInfluence = (0.1 - rawValue) * 10  -- 0 to 1 as we approach 0
+            newValue = newValue * (1 - edgeInfluence) + 0 * edgeInfluence
+        elseif rawValue > 0.9 then
+            edgeInfluence = (rawValue - 0.9) * 10  -- 0 to 1 as we approach 1
+            newValue = newValue * (1 - edgeInfluence) + 1 * edgeInfluence
+        end
+        
         self.physicalPots[potNum] = rawValue
-        return math.max(0, math.min(1, scaled))
+        return math.max(0, math.min(1, newValue))
     end
 end
 
@@ -120,7 +135,7 @@ function PotDefinitionManager:new(definitions)
     for page, defs in pairs(definitions) do
         instance.logicalValues[page] = {}
         for i, def in ipairs(defs) do
-            instance.logicalValues[page][i] = def.type == "continuous" and def.initial or nil
+            instance.logicalValues[page][i] = def.type == POT_TYPE_CONTINUOUS and def.initial or nil
         end
     end
     
@@ -171,24 +186,24 @@ end
 -- Centralized pot configuration
 local potDefinitions = {
     [PAGE_SLOT] = {
-        {type = "push_only", label = "Copy/Paste"},
-        {type = "push_only", label = "Save Notes"},
-        {type = "continuous", label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
+        {type = POT_TYPE_PUSH_ONLY, label = "Copy/Paste"},
+        {type = POT_TYPE_PUSH_ONLY, label = "Save Notes"},
+        {type = POT_TYPE_CONTINUOUS, label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
     },
     [PAGE_PATTERN] = {
-        {type = "continuous", label = "G.Prob", initial = POT_INITIAL_VALUES.GATE_PROBABILITY},
-        {type = "push_only", label = "Assign Both"},
-        {type = "continuous", label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
+        {type = POT_TYPE_CONTINUOUS, label = "G.Prob", initial = POT_INITIAL_VALUES.GATE_PROBABILITY},
+        {type = POT_TYPE_CONTINUOUS, label = "Slot Select", initial = POT_INITIAL_VALUES.SLOT_SELECT},
+        {type = POT_TYPE_CONTINUOUS, label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
     },
     [PAGE_SCALE] = {
-        {type = "continuous", label = "Oct Jump", initial = POT_INITIAL_VALUES.OCT_JUMP},
-        {type = "continuous", label = "Oct Range", initial = POT_INITIAL_VALUES.OCT_RANGE},
-        {type = "continuous", label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
+        {type = POT_TYPE_CONTINUOUS, label = "Oct Jump", initial = POT_INITIAL_VALUES.OCT_JUMP},
+        {type = POT_TYPE_CONTINUOUS, label = "Oct Range", initial = POT_INITIAL_VALUES.OCT_RANGE},
+        {type = POT_TYPE_CONTINUOUS, label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
     },
     [PAGE_SONG] = {
-        {type = "continuous", label = "G.Oct Jump", initial = POT_INITIAL_VALUES.GLOBAL_OCT},
-        {type = "push_only", label = "Play Mode"},
-        {type = "continuous", label = "Seq Mode", initial = POT_INITIAL_VALUES.SEQ_MODE}
+        {type = POT_TYPE_CONTINUOUS, label = "G.Oct Jump", initial = POT_INITIAL_VALUES.GLOBAL_OCT},
+        {type = POT_TYPE_PUSH_ONLY, label = "Play Mode"},
+        {type = POT_TYPE_CONTINUOUS, label = "Seq Mode", initial = POT_INITIAL_VALUES.SEQ_MODE}
     }
 }
 
@@ -282,6 +297,27 @@ local patterns = {
     ClusterStep = {1, 2, 3, 4, 0, 4, 3, 2}
 }
 
+-- Initialize 16 ARP slots (after patterns are defined)
+local arps = {}
+for i = 1, 16 do
+    arps[i] = {
+        pattern = 1,
+        notes = {},
+        length = #patterns[patternNames[1]],
+        offset = 0,
+        reverse = false,
+        -- Default velocity pattern (Constant)
+        velocities = {100, 100, 100, 100, 100, 100, 100, 100},
+        velocityPattern = 1, -- Index into velocityPatternNames
+        -- Step probabilities (default 100% chance for all steps)
+        probabilities = {100, 100, 100, 100, 100, 100, 100, 100},
+        -- Octave jump settings
+        octaveJumpChance = 0,  -- 0-100% chance of octave jumps
+        octaveJumpRange = 1,   -- +/- octaves (1, 2, or 3)
+        octaveJumpUpOnly = false  -- if true, only jump up
+    }
+end
+
 -- Velocity patterns (0-100%)
 local velocityPatternNames = {
     "Constant", "Accent", "OffBeat", "Crescendo", "Diminuendo", 
@@ -308,25 +344,6 @@ local velocityPatterns = {
 }
 
 -- 16 fixed ARP slots
-local arps = {}
-for i = 1, 16 do
-    arps[i] = {
-        pattern = 1,
-        notes = {},
-        length = #patterns[patternNames[1]],
-        offset = 0,
-        reverse = false,
-        -- Default velocity pattern (Constant)
-        velocities = {100, 100, 100, 100, 100, 100, 100, 100},
-        velocityPattern = 1, -- Index into velocityPatternNames
-        -- Step probabilities (default 100% chance for all steps)
-        probabilities = {100, 100, 100, 100, 100, 100, 100, 100},
-        -- Octave jump settings
-        octaveJumpChance = 0,  -- 0-100% chance of octave jumps
-        octaveJumpRange = 1,   -- +/- octaves (1, 2, or 3)
-        octaveJumpUpOnly = false  -- if true, only jump up
-    }
-end
 
 -- Clipboard for copy/paste functionality
 local slotClipboard = nil
@@ -344,6 +361,7 @@ local latchedNotes = {}
 local lastNote = nil
 local page = PAGE_SLOT
 local arpSlot = 1
+local selectedSlot = 1  -- Selected slot for pattern assignment
 local gateLen = 50
 local msg = ""
 local msgT = 0
@@ -355,7 +373,7 @@ local helpText = {
         encoders = {"Slot", "Len/Offset"}
     },
     [PAGE_PATTERN] = {
-        pots = {"G.Prob", "Assign Both", "Gate Len"},
+        pots = {"G.Prob", "Select/Assign", "Gate Len"},
         encoders = {"Rhythm Pattern", "Velocity Pattern"}
     },
     [PAGE_SCALE] = {
@@ -380,48 +398,6 @@ local logicalPots = potManager:getLogicalValues()
 
 local lastPage = PAGE_SLOT
 
--- Pot action handlers by page and pot number
-local potActions = {
-    [PAGE_PATTERN] = {
-        [1] = function(self, value)
-            local newVal = math.floor(value * 100)
-            self:setParameter(paramIndexes.stepProbability, newVal)
-        end
-    },
-    [PAGE_SCALE] = {
-        [1] = function(self, value)
-            local slot = arps[arpSlot]
-            slot.octaveJumpChance = math.floor(value * 100)
-            msg, msgT = "S" .. arpSlot .. " Oct Jump: " .. slot.octaveJumpChance .. "%", 30
-        end,
-        [2] = function(self, value)
-            local slot = arps[arpSlot]
-            slot.octaveJumpRange = math.max(1, math.min(3, math.floor(value * 3) + 1))
-            msg, msgT = "S" .. arpSlot .. " Oct Range: ±" .. slot.octaveJumpRange, 30
-        end
-    },
-    [PAGE_SONG] = {
-        [1] = function(self, value)
-            local newVal = math.floor(value * 200)
-            self:setParameter(paramIndexes.globalOctaveJump, newVal)
-        end,
-        [3] = function(self, value)
-            local p_idx = paramIndexes.sequenceMode
-            local newVal = math.min(#sequenceModeLabels, math.floor(value * #sequenceModeLabels) + 1)
-            self:setParameter(p_idx, newVal)
-            msg, msgT = "Seq. Mode: " .. sequenceModeLabels[newVal], 30
-        end
-    }
-}
-
--- Initialize action dispatcher with default handler for pot 3 (gate length)
-local potDispatcher = ActionDispatcher:new(potActions, function(self, page, potNum, value)
-    if potNum == 3 and page ~= PAGE_SONG then
-        gateLen = math.floor(value * 100)
-        self:setParameter(paramIndexes.gateLen, gateLen)
-    end
-end)
-
 local paramIndexes = {
     scale = 1,
     pattern = 2,
@@ -437,6 +413,51 @@ local paramIndexes = {
     velocityPattern = 12,
     stepProbability = 13
 }
+
+-- Pot action handlers by page and pot number
+local potActions = {
+    [PAGE_PATTERN] = {
+        [1] = function(self, value)
+            self:setParameter(paramIndexes.stepProbability, value * 100)
+        end,
+        [2] = function(self, value)
+            selectedSlot = math.max(1, math.min(16, math.floor(value * 16) + 1))
+            msg, msgT = "Selected Slot: " .. selectedSlot, 30
+        end
+    },
+    [PAGE_SCALE] = {
+        [1] = function(self, value)
+            local slot = arps[arpSlot]
+            slot.octaveJumpChance = value * 100
+            msg, msgT = "S" .. arpSlot .. " Oct Jump: " .. math.floor(slot.octaveJumpChance) .. "%", 30
+        end,
+        [2] = function(self, value)
+            local slot = arps[arpSlot]
+            slot.octaveJumpRange = math.max(1, math.min(3, math.floor(value * 3) + 1))
+            msg, msgT = "S" .. arpSlot .. " Oct Range: ±" .. slot.octaveJumpRange, 30
+        end
+    },
+    [PAGE_SONG] = {
+        [1] = function(self, value)
+            self:setParameter(paramIndexes.globalOctaveJump, value * 100)
+        end,
+        [3] = function(self, value)
+            local p_idx = paramIndexes.sequenceMode
+            local newVal = math.min(#sequenceModeLabels, math.floor(value * #sequenceModeLabels) + 1)
+            self:setParameter(p_idx, newVal)
+            msg, msgT = "Seq. Mode: " .. sequenceModeLabels[newVal], 30
+        end
+    }
+}
+
+
+-- Initialize action dispatcher with default handler for pot 3 (gate length)
+local potDispatcher = ActionDispatcher:new(potActions, function(self, page, potNum, value)
+    if potNum == 3 and page ~= PAGE_SONG then
+        gateLen = value * 100
+        self:setParameter(paramIndexes.gateLen, gateLen)
+    end
+end)
 
 local noteNames = {
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
@@ -520,6 +541,9 @@ local function drawPatternPageUI(self)
     -- Show gate probability
     local gateProb = math.floor(self.parameters[paramIndexes.stepProbability])
     drawText(10, 50, ("G.Prob: %d%%"):format(gateProb))
+    
+    -- Show selected slot on right side, centered vertically
+    drawText(180, 36, ("Selected Slot: %d"):format(selectedSlot))
 end
 
 -- Helper function to draw the Scale Page
@@ -632,9 +656,9 @@ return {
                 [paramIndexes.sequenceMode] = {
                     "Sequence Mode", sequenceModeLabels, 1
                 },
-                [paramIndexes.globalOctaveJump] = {"Global Octave Jump", 0, 200, 100, kPercent},
-                [paramIndexes.globalProbability] = {"Global Probability", 0, 200, 100, kPercent},
-                [paramIndexes.globalVelocity] = {"Global Velocity", 0, 200, 100, kPercent},
+                [paramIndexes.globalOctaveJump] = {"Global Octave Jump", 0, 100, 0, kPercent},
+                [paramIndexes.globalProbability] = {"Global Probability", 0, 100, 100, kPercent},
+                [paramIndexes.globalVelocity] = {"Global Velocity", 0, 100, 100, kPercent},
                 [paramIndexes.velocityPattern] = {"Velocity Pattern", velocityPatternNames, 1},
                 [paramIndexes.stepProbability] = {"G.Prob", 0, 100, 100, kPercent}
             }
@@ -885,10 +909,16 @@ return {
     
     -- Handle pot turn with library modules
     handlePotTurn = function(self, potNum, value)
-        local processedValue = potTakeoverSystem:processTurn(potNum, value, page, logicalPots)
-        if processedValue then
-            potManager:updateValue(page, potNum, processedValue)
-            potDispatcher:dispatch(self, page, potNum, processedValue)
+        local potDef = potManager:getDefinition(page, potNum)
+        if potDef and potDef.type == POT_TYPE_CONTINUOUS then
+            local processedValue = potTakeoverSystem:processTurn(potNum, value, page, logicalPots)
+            if processedValue then
+                potManager:updateValue(page, potNum, processedValue)
+                potDispatcher:dispatch(self, page, potNum, processedValue)
+            end
+        else
+            -- For push_only pots, just dispatch directly
+            potDispatcher:dispatch(self, page, potNum, value)
         end
     end,
     
@@ -1157,7 +1187,11 @@ return {
         end
 
         -- Transient message in top right corner
-        if msgT > 0 then drawTinyText(200, 8, msg) end
+        if msgT > 0 then 
+            local text_width = #msg * 4 -- Approx width of tiny text char
+            local text_x = 256 - text_width - 5 -- 5 pixel margin from right edge
+            drawTinyText(text_x, 8, msg) 
+        end
 
         -- Draw help screen using helper
         drawHelpScreenUI(self)
