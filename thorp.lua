@@ -191,7 +191,7 @@ local potDefinitions = {
         {type = POT_TYPE_CONTINUOUS, label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
     },
     [PAGE_PATTERN] = {
-        {type = POT_TYPE_CONTINUOUS, label = "G.Prob", initial = POT_INITIAL_VALUES.GATE_PROBABILITY},
+        {type = POT_TYPE_CONTINUOUS, label = "Gate Prob", initial = POT_INITIAL_VALUES.GATE_PROBABILITY},
         {type = POT_TYPE_CONTINUOUS, label = "Slot Select", initial = POT_INITIAL_VALUES.SLOT_SELECT},
         {type = POT_TYPE_CONTINUOUS, label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
     },
@@ -308,13 +308,8 @@ for i = 1, 16 do
         reverse = false,
         -- Default velocity pattern (Constant)
         velocities = {100, 100, 100, 100, 100, 100, 100, 100},
-        velocityPattern = 1, -- Index into velocityPatternNames
-        -- Step probabilities (default 100% chance for all steps)
-        probabilities = {100, 100, 100, 100, 100, 100, 100, 100},
-        -- Octave jump settings
-        octaveJumpChance = 0,  -- 0-100% chance of octave jumps
-        octaveJumpRange = 1,   -- +/- octaves (1, 2, or 3)
-        octaveJumpUpOnly = false  -- if true, only jump up
+        velocityPattern = 1 -- Index into velocityPatternNames
+        -- Note: Gate probability, gate length, and octave jump settings are now global performance parameters
     }
 end
 
@@ -363,6 +358,10 @@ local page = PAGE_SLOT
 local arpSlot = 1
 local selectedSlot = 1  -- Selected slot for pattern assignment
 local gateLen = 50
+-- Global performance parameters
+local globalOctaveJumpChance = 0    -- 0-100% chance
+local globalOctaveJumpRange = 1     -- ±1-3 octaves
+local globalGateProbability = 100   -- 0-100% gate probability
 local msg = ""
 local msgT = 0
 local stepCount = 0
@@ -373,7 +372,7 @@ local helpText = {
         encoders = {"Slot", "Len/Offset"}
     },
     [PAGE_PATTERN] = {
-        pots = {"G.Prob", "Select/Assign", "Gate Len"},
+        pots = {"Gate Prob", "Select/Assign", "Gate Len"},
         encoders = {"Rhythm Pattern", "Velocity Pattern"}
     },
     [PAGE_SCALE] = {
@@ -418,7 +417,8 @@ local paramIndexes = {
 local potActions = {
     [PAGE_PATTERN] = {
         [1] = function(self, value)
-            self:setParameter(paramIndexes.stepProbability, value * 100)
+            globalGateProbability = math.floor(value * 100)
+            msg, msgT = "Gate Prob: " .. math.floor(globalGateProbability) .. "%", 30
         end,
         [2] = function(self, value)
             selectedSlot = math.max(1, math.min(16, math.floor(value * 16) + 1))
@@ -427,14 +427,12 @@ local potActions = {
     },
     [PAGE_SCALE] = {
         [1] = function(self, value)
-            local slot = arps[arpSlot]
-            slot.octaveJumpChance = value * 100
-            msg, msgT = "S" .. arpSlot .. " Oct Jump: " .. math.floor(slot.octaveJumpChance) .. "%", 30
+            globalOctaveJumpChance = value * 100
+            msg, msgT = "Oct Jump: " .. math.floor(globalOctaveJumpChance) .. "%", 30
         end,
         [2] = function(self, value)
-            local slot = arps[arpSlot]
-            slot.octaveJumpRange = math.max(1, math.min(3, math.floor(value * 3) + 1))
-            msg, msgT = "S" .. arpSlot .. " Oct Range: ±" .. slot.octaveJumpRange, 30
+            globalOctaveJumpRange = math.max(1, math.min(3, math.floor(value * 3) + 1))
+            msg, msgT = "Oct Range: ±" .. globalOctaveJumpRange, 30
         end
     },
     [PAGE_SONG] = {
@@ -454,7 +452,7 @@ local potActions = {
 -- Initialize action dispatcher with default handler for pot 3 (gate length)
 local potDispatcher = ActionDispatcher:new(potActions, function(self, page, potNum, value)
     if potNum == 3 and page ~= PAGE_SONG then
-        gateLen = value * 100
+        gateLen = 1 + math.floor(value * 99)  -- Map 0.0-1.0 to 1-100
         self:setParameter(paramIndexes.gateLen, gateLen)
     end
 end)
@@ -531,35 +529,29 @@ end
 
 -- Helper function to draw the Pattern Page
 local function drawPatternPageUI(self)
-    -- Show current global pattern parameters
+    -- First line: Gate Prob | Gate Len (fixed width formatting)
+    drawText(10, 22, ("Gate Prob: %3d%% | Gate Len: %3d%%"):format(
+        globalGateProbability, gateLen))
+    
+    -- Second line: Selected slot
+    drawText(10, 36, ("Selected Slot: %d"):format(selectedSlot))
+    
+    -- Third line: Rhythm | Velocity (encoder-controlled)
     local patternIdx = math.floor(self.parameters[paramIndexes.pattern])
-    drawText(10, 22, ("Rhythm: %s"):format(patternNames[patternIdx]))
-    
     local velPatternIdx = math.floor(self.parameters[paramIndexes.velocityPattern])
-    drawText(10, 36, ("Velocity: %s"):format(velocityPatternNames[velPatternIdx]))
-    
-    -- Show gate probability
-    local gateProb = math.floor(self.parameters[paramIndexes.stepProbability])
-    drawText(10, 50, ("G.Prob: %d%%"):format(gateProb))
-    
-    -- Show selected slot on right side, centered vertically
-    drawText(180, 36, ("Selected Slot: %d"):format(selectedSlot))
+    drawText(10, 50, ("Rhythm: %s | Velocity: %s"):format(patternNames[patternIdx], velocityPatternNames[velPatternIdx]))
 end
 
 -- Helper function to draw the Scale Page
 local function drawScalePageUI(self)
-    local rootNoteIdx = math.floor(self.parameters[paramIndexes.rootNote])
-    drawText(10, 22, ("Root: %s"):format(noteNames[rootNoteIdx]))
-    local scaleIdx = math.floor(self.parameters[paramIndexes.scale])
-    drawText(10, 36, ("Scale: %s"):format(scaleNames[scaleIdx]))
+    -- Line 1: Oct Jump | Oct Range | Gate Len (pot-controlled)
+    drawText(10, 22, ("Oct Jump: %3d%% | Oct Range: ±%d | Gate Len: %3d%%"):format(
+        globalOctaveJumpChance, globalOctaveJumpRange, math.floor(gateLen)))
     
-    -- Show octave jump settings for current slot (controlled by pots)
-    local slot = arps[arpSlot]
-    if slot then
-        local octJump = slot.octaveJumpChance or 0
-        local octRange = slot.octaveJumpRange or 1
-        drawText(10, 50, ("Oct Jump: %d%% ±%d"):format(octJump, octRange))
-    end
+    -- Line 2: Root | Scale (encoder-controlled)
+    local rootNoteIdx = math.floor(self.parameters[paramIndexes.rootNote])
+    local scaleIdx = math.floor(self.parameters[paramIndexes.scale])
+    drawText(10, 36, ("Root: %s | Scale: %s"):format(noteNames[rootNoteIdx], scaleNames[scaleIdx]))
 end
 
 -- Helper function to draw the Song Page
@@ -579,13 +571,11 @@ local function drawSongPageUI(self)
         table.insert(chain_str_tbl, slot_str)
     end
     drawText(10, 36, ("Chain: %s"):format(table.concat(chain_str_tbl, "+")))
-    local playModeStr = playModeLabels[playMode]
-    drawText(10, 50, ("Mode: %s | Seq: %s"):format(playModeStr,
-                                                   sequenceModeLabels[sequenceMode]))
-    
-    -- Display global octave jump parameter
+    -- Display parameters in pot order: G.Oct | Mode | Seq
     local globalOct = self.parameters[paramIndexes.globalOctaveJump]
-    drawText(140, 50, ("G.Oct: %d%%"):format(math.floor(globalOct)))
+    local playModeStr = playModeLabels[playMode]
+    drawText(10, 50, ("G.Oct: %d%% | Mode: %s | Seq: %s"):format(
+        math.floor(globalOct), playModeStr, sequenceModeLabels[sequenceMode]))
 end
 
 -- Helper function to draw the Help Screen
@@ -623,16 +613,17 @@ return {
     init = function(self)
         self.lastPitch = 0.0
         self.lastVelocity = 5.0 -- Default to 50% velocity (5V out of 10V)
+        self.lastClockTime = 0
+        self.clockPeriod = 0.125 -- Default 125ms (120 BPM, 16th notes)
         self.helpVisible = false
         self.slotEncoderMode = "offset"
         self.lastPlayMode = -1
         self.lastArpSlot = -1
         self.lastSequenceMode = -1
+        self.outputs = {0.0, 0.0, 5.0} -- Gate, V/Oct, Velocity
         if self.state then
             arps = self.state.arps or arps
             chain = self.state.chain or chain
-            sequenceMode = self.state.sequenceMode or sequenceMode
-            gateLen = self.state.gateLen or gateLen
         end
         return {
             inputs = {kGate, kTrigger},
@@ -666,6 +657,8 @@ return {
     end,
 
     step = function(self, dt, inputs)
+        -- Track elapsed time
+        self.time = (self.time or 0) + dt
         -- Poll parameters and call onParameterChanged
         local currentPlayMode = self.parameters[paramIndexes.playMode]
         if currentPlayMode ~= self.lastPlayMode then
@@ -686,14 +679,16 @@ return {
             self.lastSequenceMode = currentSequenceMode
         end
 
+        -- Countdown gate time (but not legato mode which is -1)
         if self.gateTime and self.gateTime > 0 then
-            self.gateTime = self.gateTime - (dt * 1000) -- dt is in seconds
+            self.gateTime = self.gateTime - dt  -- dt is in seconds, gateTime is in seconds
             if self.gateTime <= 0 then
                 self.gateTime = 0
-                -- Don't return here - let _advance_step handle outputs consistently
+                -- Update outputs with gate off
+                self.outputs[1] = 0.0
+                return self.outputs
             end
         end
-        -- Note: gateTime = -1 means legato mode (gate stays on until next note)
     end,
 
     -- Track held MIDI notes for capture
@@ -719,7 +714,16 @@ return {
     end,
 
     gate = function(self, input, rising)
-        if input == 1 and rising then return self:_advance_step() end
+        if input == 1 and rising then 
+            -- Track clock timing
+            local currentTime = self.time or 0
+            if self.lastClockTime > 0 then
+                self.clockPeriod = currentTime - self.lastClockTime
+            end
+            self.lastClockTime = currentTime
+            
+            return self:_advance_step() 
+        end
     end,
 
     -- Renamed from trigger2 to be the handler for Input 2 (kTrigger)
@@ -776,11 +780,8 @@ return {
                 local step = pat[real]
 
                 if step ~= 0 and slot.notes and #slot.notes > 0 then
-                    -- Check step probability with global modifier
-                    local stepProb = slot.probabilities and slot.probabilities[real] or 100
-                    local globalProbMod = self.parameters[paramIndexes.globalProbability] / 100.0
-                    local effectiveProb = math.max(0, math.min(100, stepProb * globalProbMod))
-                    if math.random(1, 100) <= effectiveProb then
+                    -- Check gate probability (global performance parameter)
+                    if math.random(1, 100) <= globalGateProbability then
                         raw_note = slot.notes[((step - 1) % #slot.notes) + 1]
                     end
                 end
@@ -806,20 +807,15 @@ return {
                 local step = pat[real]
 
                 if step ~= 0 then
-                    -- Check step probability: use global parameter in Jam mode
-                    local stepProb = self.parameters[paramIndexes.stepProbability]
-                    local globalProbMod = self.parameters[paramIndexes.globalProbability] / 100.0
-                    local effectiveProb = math.max(0, math.min(100, stepProb * globalProbMod))
-                    if math.random(1, 100) <= effectiveProb then
+                    -- Check gate probability (global performance parameter)
+                    if math.random(1, 100) <= globalGateProbability then
                         raw_note = notes_for_arp[((step - 1) % #notes_for_arp) + 1]
                     end
                 end
             end
         end
 
-        -- Always output current pitch and velocity, determine gate state separately
-        local new_outputs = {}
-        
+        -- Update outputs based on current state
         if raw_note then
             -- Get current slot for velocity and octave settings
             local currentSlot = (playMode == PLAY_MODE_SONG and #chain > 0) and arps[chain[chainPos]] or arps[arpSlot]
@@ -841,18 +837,13 @@ return {
             
             local globalVelMod = self.parameters[paramIndexes.globalVelocity] / 100.0
             currentStepVelocity = math.max(0, math.min(100, currentStepVelocity * globalVelMod))
-            if currentSlot.octaveJumpChance and currentSlot.octaveJumpChance > 0 then
-                -- Apply global octave jump modifier
+            if globalOctaveJumpChance > 0 then
+                -- Apply global octave jump modifier  
                 local globalOctMod = self.parameters[paramIndexes.globalOctaveJump] / 100.0
-                local effectiveOctaveChance = currentSlot.octaveJumpChance * globalOctMod
+                local effectiveOctaveChance = globalOctaveJumpChance * globalOctMod
                 if math.random(1, 100) <= effectiveOctaveChance then
-                    local jumpRange = currentSlot.octaveJumpRange or 1
-                    local octaveShift
-                    if currentSlot.octaveJumpUpOnly then
-                        octaveShift = math.random(1, jumpRange) * 12
-                    else
-                        octaveShift = math.random(-jumpRange, jumpRange) * 12
-                    end
+                    local jumpRange = globalOctaveJumpRange
+                    local octaveShift = math.random(-jumpRange, jumpRange) * 12
                     raw_note = math.max(0, math.min(127, raw_note + octaveShift))
                 end
             end
@@ -866,13 +857,20 @@ return {
                                                  scales[scaleNames[scaleIdx]],
                                                  rootNote)
 
-            local gateLen = self.parameters[paramIndexes.gateLen]
-            -- Gate length is 1-100. At 100%, use legato mode (gate stays on)
-            if gateLen >= 100 then
-                self.gateTime = -1 -- Special value for legato mode
-            else
-                -- Map 1-99% to ~5-495 ms
-                self.gateTime = 5 + (gateLen * 4.9)
+            -- Only trigger new gate for NEW notes (different pitch or gate is off)
+            local isNewNote = (note_to_play ~= self.lastPitch) or (not self.gateTime or self.gateTime == 0)
+            
+            -- Only update gate time for new notes
+            if isNewNote then
+                local gateLen = self.parameters[paramIndexes.gateLen]
+                if gateLen >= 100 then
+                    -- 100% = legato mode: gate stays on until next note
+                    self.gateTime = -1  -- Special value for legato
+                else
+                    -- Gate length as percentage of clock period
+                    -- 1-99% of the time between clock pulses
+                    self.gateTime = (gateLen / 100.0) * self.clockPeriod
+                end
             end
             
             -- Update pitch and velocity for new note
@@ -881,21 +879,21 @@ return {
             self.lastPitch = pitch
             self.lastVelocity = velocityCV
         end
+        -- Note: On rests, let gateTime continue counting down naturally
+        -- Gate will turn off when gateTime reaches 0, not immediately on rests
         
         -- Always output current pitch and velocity
-        new_outputs[2] = self.lastPitch
-        new_outputs[3] = self.lastVelocity
+        self.outputs[2] = self.lastPitch
+        self.outputs[3] = self.lastVelocity
         
-        -- Determine gate state: on for new notes, off for rests, and controlled by gateTime
-        if raw_note then
-            new_outputs[1] = 5.0 -- Gate on for new note
-        elseif self.gateTime and (self.gateTime > 0 or self.gateTime == -1) then
-            new_outputs[1] = 5.0 -- Gate stays on during gate time or legato mode
+        -- Determine gate state: controlled by gateTime
+        if self.gateTime and (self.gateTime > 0 or self.gateTime == -1) then
+            self.outputs[1] = 5.0 -- Gate on during gate time or legato mode
         else
-            new_outputs[1] = 0.0 -- Gate off
+            self.outputs[1] = 0.0 -- Gate off
         end
         
-        return new_outputs
+        return self.outputs
     end,
 
     ui = function(self) return true end,
@@ -955,13 +953,7 @@ return {
                 for i, vel in ipairs(source.velocities) do
                     target.velocities[i] = vel
                 end
-                target.probabilities = {}
-                for i, prob in ipairs(source.probabilities) do
-                    target.probabilities[i] = prob
-                end
-                target.octaveJumpChance = source.octaveJumpChance
-                target.octaveJumpRange = source.octaveJumpRange
-                target.octaveJumpUpOnly = source.octaveJumpUpOnly
+                -- Note: Probabilities and octave jump settings are now global performance parameters
                 target.velocityPattern = source.velocityPattern
                 msg, msgT = "Pasted to S" .. arpSlot, 30
             else
@@ -974,20 +966,14 @@ return {
                     offset = source.offset,
                     reverse = source.reverse,
                     velocities = {},
-                    probabilities = {},
-                    octaveJumpChance = source.octaveJumpChance,
-                    octaveJumpRange = source.octaveJumpRange,
-                    octaveJumpUpOnly = source.octaveJumpUpOnly,
                     velocityPattern = source.velocityPattern
+                    -- Note: Probabilities and octave jump settings are now global performance parameters
                 }
                 for i, note in ipairs(source.notes) do
                     slotClipboard.notes[i] = note
                 end
                 for i, vel in ipairs(source.velocities) do
                     slotClipboard.velocities[i] = vel
-                end
-                for i, prob in ipairs(source.probabilities) do
-                    slotClipboard.probabilities[i] = prob
                 end
                 msg, msgT = "Copied S" .. arpSlot, 30
             end
@@ -1067,10 +1053,12 @@ return {
     end,
 
     encoder1Push = function(self)
-        if page == PAGE_SLOT or page == PAGE_SONG then
+        if page == PAGE_SONG then
             -- add current arpSlot to chain
             table.insert(chain, arpSlot)
             msg, msgT = "Added S" .. arpSlot .. " to Chain", 30
+        elseif page == PAGE_SLOT then
+            -- Slot page encoder1Push not used currently
         elseif page == PAGE_SCALE then
             -- Scale page encoder1Push not used currently
         end
@@ -1203,8 +1191,6 @@ return {
         return {
             arps = arps,
             chain = chain,
-            sequenceMode = sequenceMode,
-            gateLen = gateLen
         }
     end,
 
@@ -1229,6 +1215,8 @@ return {
             arpSlot = math.floor(value)
         elseif id == paramIndexes.sequenceMode then
             sequenceMode = value
+        elseif id == paramIndexes.gateLen then
+            gateLen = value
         end
     end
 }
