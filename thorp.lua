@@ -369,7 +369,8 @@ local stepCount = 0
 local helpText = {
     [PAGE_SLOT] = {
         pots = {"Copy/Paste", "Save Notes", "Gate Len"},
-        encoders = {"Slot", "Len/Offset"}
+        encoders = {"Slot", "Adjust"},
+        encoderPush = {"Clear", "Mode"}
     },
     [PAGE_PATTERN] = {
         pots = {"Gate Prob", "Select/Assign", "Gate Len"},
@@ -596,8 +597,13 @@ local function drawHelpScreenUI(self)
             drawTinyText(255 - #p_text * 4 - 5, y + 10, p_text)
             -- Line 2
             drawTinyText(5, y + 18, "Exit")
-            drawCenteredTinyText(40, 90, y + 18, currentHelp.encoders[1])
-            drawCenteredTinyText(130, 90, y + 18, currentHelp.encoders[2])
+            if currentHelp.encoderPush then
+                drawCenteredTinyText(40, 90, y + 18, currentHelp.encoders[1] .. "/" .. currentHelp.encoderPush[1])
+                drawCenteredTinyText(130, 90, y + 18, currentHelp.encoders[2] .. "/" .. currentHelp.encoderPush[2])
+            else
+                drawCenteredTinyText(40, 90, y + 18, currentHelp.encoders[1])
+                drawCenteredTinyText(130, 90, y + 18, currentHelp.encoders[2])
+            end
             local h_text = "Help"
             drawTinyText(255 - #h_text * 4 - 5, y + 18, h_text)
 
@@ -621,13 +627,14 @@ return {
         self.lastArpSlot = -1
         self.lastSequenceMode = -1
         self.outputs = {0.0, 0.0, 5.0} -- Gate, V/Oct, Velocity
+        self.currentVOct = 0.0 -- Current V/Oct input value
         if self.state then
             arps = self.state.arps or arps
             chain = self.state.chain or chain
         end
         return {
-            inputs = {kGate, kTrigger},
-            inputNames = {"Clock", "Step"},
+            inputs = {kGate, kTrigger, kGate, kCV},
+            inputNames = {"Clock", "Step", "Note Gate", "V/Oct"},
             outputs = {kStepped, kStepped, kStepped},
             outputNames = {"Gate", "V/Oct", "Velocity"},
             midi = {
@@ -679,6 +686,11 @@ return {
             self.lastSequenceMode = currentSequenceMode
         end
 
+        -- Read V/Oct input (Input 4)
+        if inputs and inputs[4] then
+            self.currentVOct = inputs[4]
+        end
+
         -- Countdown gate time (but not legato mode which is -1)
         if self.gateTime and self.gateTime > 0 then
             self.gateTime = self.gateTime - dt  -- dt is in seconds, gateTime is in seconds
@@ -723,6 +735,20 @@ return {
             self.lastClockTime = currentTime
             
             return self:_advance_step() 
+        elseif input == 3 then
+            -- Note gate input (Input 3)
+            local note = math.floor(self.currentVOct * 12 + 60) -- Convert V/Oct to MIDI note
+            if rising then
+                -- Gate on: add note to active and latched (accumulative, no auto-clear)
+                activeNotes[note] = true
+                lastNote = note
+                latchedNotes[note] = true -- Accumulate without clearing
+                self:setParameter(paramIndexes.playMode, PLAY_MODE_JAM)
+            else
+                -- Gate off: remove from active but keep in latched
+                activeNotes[note] = nil
+                if lastNote == note then lastNote = next(activeNotes) end
+            end
         end
     end,
 
@@ -1058,7 +1084,13 @@ return {
             table.insert(chain, arpSlot)
             msg, msgT = "Added S" .. arpSlot .. " to Chain", 30
         elseif page == PAGE_SLOT then
-            -- Slot page encoder1Push not used currently
+            -- Clear latched notes
+            if next(latchedNotes) then
+                latchedNotes = {}
+                msg, msgT = "Latched notes cleared", 30
+            else
+                msg, msgT = "No latched notes to clear", 30
+            end
         elseif page == PAGE_SCALE then
             -- Scale page encoder1Push not used currently
         end
