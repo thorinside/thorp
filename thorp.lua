@@ -306,36 +306,37 @@ for i = 1, 16 do
         length = #patterns[patternNames[1]],
         offset = 0,
         reverse = false,
-        -- Default velocity pattern (Constant)
-        velocities = {100, 100, 100, 100, 100, 100, 100, 100},
+        -- Default velocity pattern (Constant) - 50% center for bipolar system
+        velocities = {50, 50, 50, 50, 50, 50, 50, 50},
         velocityPattern = 1 -- Index into velocityPatternNames
         -- Note: Gate probability, gate length, and octave jump settings are now global performance parameters
     }
 end
 
--- Velocity patterns (0-100%)
+-- Velocity pattern display names (user-friendly)
 local velocityPatternNames = {
-    "Constant", "Accent", "OffBeat", "Crescendo", "Diminuendo", 
+    "Constant", "Accent", "Off Beat", "Crescendo", "Diminuendo", 
     "Strong/Weak", "Swing Feel", "Random Walk", "Pulse", "Breathe",
     "Hard/Soft", "Build Up", "Break Down", "Pump", "Subtle"
 }
 
+-- Velocity patterns (bipolar: 50 = center/1.0x multiplier)
 local velocityPatterns = {
-    Constant = {100, 100, 100, 100, 100, 100, 100, 100},
-    Accent = {100, 70, 80, 70, 100, 70, 80, 70},
-    OffBeat = {70, 100, 80, 100, 70, 100, 80, 100},
-    Crescendo = {50, 60, 70, 80, 85, 90, 95, 100},
-    Diminuendo = {100, 95, 90, 85, 80, 70, 60, 50},
-    StrongWeak = {100, 60, 100, 60, 100, 60, 100, 60},
-    SwingFeel = {100, 80, 90, 75, 100, 80, 90, 75},
-    RandomWalk = {85, 100, 65, 90, 75, 95, 80, 100},
-    Pulse = {100, 50, 100, 50, 100, 50, 100, 50},
-    Breathe = {80, 85, 90, 95, 100, 95, 90, 85},
-    HardSoft = {100, 40, 100, 40, 100, 40, 100, 40},
-    BuildUp = {60, 65, 70, 75, 80, 85, 90, 95},
-    BreakDown = {95, 90, 85, 80, 75, 70, 65, 60},
-    Pump = {100, 70, 90, 80, 100, 70, 90, 80},
-    Subtle = {90, 85, 95, 80, 90, 85, 95, 80}
+    {50, 50, 50, 50, 50, 50, 50, 50},  -- 1: Constant
+    {75, 35, 40, 35, 75, 35, 40, 35},  -- 2: Accent
+    {35, 75, 45, 75, 35, 75, 45, 75},  -- 3: Off Beat
+    {25, 30, 35, 40, 42, 45, 47, 50},  -- 4: Crescendo
+    {50, 47, 45, 42, 40, 35, 30, 25},  -- 5: Diminuendo
+    {65, 30, 65, 30, 65, 30, 65, 30},  -- 6: Strong/Weak
+    {60, 40, 55, 37, 60, 40, 55, 37},  -- 7: Swing Feel
+    {42, 60, 32, 55, 37, 57, 40, 62},  -- 8: Random Walk
+    {75, 25, 75, 25, 75, 25, 75, 25},  -- 9: Pulse
+    {40, 42, 45, 47, 50, 47, 45, 42},  -- 10: Breathe
+    {80, 20, 80, 20, 80, 20, 80, 20},  -- 11: Hard/Soft
+    {30, 32, 35, 37, 40, 42, 45, 47},  -- 12: Build Up
+    {47, 45, 42, 40, 37, 35, 32, 30},  -- 13: Break Down
+    {70, 35, 60, 40, 70, 35, 60, 40},  -- 14: Pump
+    {47, 42, 52, 40, 47, 42, 52, 40}   -- 15: Subtle
 }
 
 -- 16 fixed ARP slots
@@ -538,8 +539,8 @@ local function drawPatternPageUI(self)
     drawText(10, 36, ("Selected Slot: %d"):format(selectedSlot))
     
     -- Third line: Rhythm | Velocity (encoder-controlled)
-    local patternIdx = math.floor(self.parameters[paramIndexes.pattern])
-    local velPatternIdx = math.floor(self.parameters[paramIndexes.velocityPattern])
+    local patternIdx = self.parameters[paramIndexes.pattern] or 1
+    local velPatternIdx = self.parameters[paramIndexes.velocityPattern] or 1
     drawText(10, 50, ("Rhythm: %s | Velocity: %s"):format(patternNames[patternIdx], velocityPatternNames[velPatternIdx]))
 end
 
@@ -550,8 +551,8 @@ local function drawScalePageUI(self)
         globalOctaveJumpChance, globalOctaveJumpRange, math.floor(gateLen)))
     
     -- Line 2: Root | Scale (encoder-controlled)
-    local rootNoteIdx = math.floor(self.parameters[paramIndexes.rootNote])
-    local scaleIdx = math.floor(self.parameters[paramIndexes.scale])
+    local rootNoteIdx = self.parameters[paramIndexes.rootNote]
+    local scaleIdx = self.parameters[paramIndexes.scale]
     drawText(10, 36, ("Root: %s | Scale: %s"):format(noteNames[rootNoteIdx], scaleNames[scaleIdx]))
 end
 
@@ -815,7 +816,7 @@ return {
         elseif playMode == PLAY_MODE_JAM then
             -- jam mode: use latched notes
             local slot = arps[arpSlot]
-            local patternIdx = self.parameters[paramIndexes.pattern]
+            local patternIdx = self.parameters[paramIndexes.pattern] or 1
             local pat = patterns[patternNames[patternIdx]]
             local len, off, rev = slot.length, slot.offset, slot.reverse
 
@@ -846,19 +847,24 @@ return {
             -- Get current slot for velocity and octave settings
             local currentSlot = (playMode == PLAY_MODE_SONG and #chain > 0) and arps[chain[chainPos]] or arps[arpSlot]
             
-            -- Get velocity pattern: per-slot in Song mode, global parameter in Jam mode
-            local currentStepVelocity = 100 -- Default velocity
+            -- Get velocity using bipolar system: 50% = 1.0x multiplier (no change)
+            local baseVelocity = 50 -- Base velocity for bipolar system
+            local currentStepVelocity = baseVelocity -- Default
+            
             if playMode == PLAY_MODE_SONG and #chain > 0 then
-                -- Song mode: use slot's saved velocity pattern
+                -- Song mode: use slot's saved velocity pattern as bipolar multiplier
                 if currentSlot.velocities and currentSlot.velocities[currentStepIndex] then
-                    currentStepVelocity = currentSlot.velocities[currentStepIndex]
+                    local multiplier = currentSlot.velocities[currentStepIndex] / 50.0  -- Bipolar: 50 = 1.0x
+                    currentStepVelocity = baseVelocity * multiplier
                 end
             else
-                -- Jam mode: use global velocity pattern parameter
-                local velPatternIdx = math.floor(self.parameters[paramIndexes.velocityPattern])
-                local velPatternName = velocityPatternNames[velPatternIdx]
-                local velPattern = velocityPatterns[velPatternName]
-                currentStepVelocity = velPattern and velPattern[currentStepIndex] or 100
+                -- Jam mode: use global velocity pattern parameter as bipolar multiplier
+                local velPatternIdx = self.parameters[paramIndexes.velocityPattern] or 1
+                local velPattern = velocityPatterns[velPatternIdx]
+                if velPattern and velPattern[currentStepIndex] then
+                    local multiplier = velPattern[currentStepIndex] / 50.0  -- Bipolar: 50 = 1.0x
+                    currentStepVelocity = baseVelocity * multiplier
+                end
             end
             
             local globalVelMod = self.parameters[paramIndexes.globalVelocity] / 100.0
@@ -1019,8 +1025,13 @@ return {
                 msg, msgT = "No latched notes to save", 30
             end
         elseif page == PAGE_PATTERN then
-            local patternIdx = math.floor(self.parameters[paramIndexes.pattern])
-            local velPatternIdx = math.floor(self.parameters[paramIndexes.velocityPattern])
+            local patternIdx = self.parameters[paramIndexes.pattern] or 1
+            local velPatternIdx = self.parameters[paramIndexes.velocityPattern] or 1
+            
+            -- Ensure indices are valid
+            patternIdx = math.max(1, math.min(#patternNames, patternIdx))
+            velPatternIdx = math.max(1, math.min(#velocityPatternNames, velPatternIdx))
+            
             local slot = arps[selectedSlot]
             
             -- Save rhythm pattern
@@ -1029,13 +1040,12 @@ return {
             
             -- Save velocity pattern
             slot.velocityPattern = velPatternIdx
-            local velPatternName = velocityPatternNames[velPatternIdx]
-            local velPattern = velocityPatterns[velPatternName]
+            local velPattern = velocityPatterns[velPatternIdx]
             for i = 1, 8 do
                 slot.velocities[i] = velPattern[i]
             end
             
-            msg, msgT = "S" .. selectedSlot .. " -> " .. patternNames[patternIdx] .. " + " .. velPatternName, 30
+            msg, msgT = "S" .. selectedSlot .. " -> " .. patternNames[patternIdx] .. " + " .. velocityPatternNames[velPatternIdx], 30
         elseif page == PAGE_SONG then
             local p_idx = paramIndexes.playMode
             local currentVal = self.parameters[p_idx]
@@ -1060,12 +1070,12 @@ return {
         elseif page == PAGE_PATTERN then
             -- Rhythm pattern control
             local p_idx = paramIndexes.pattern
-            local currentVal = self.parameters[p_idx]
+            local currentVal = self.parameters[p_idx] or 1
             local newVal = currentVal + d
             if newVal > #patternNames then newVal = 1 end
             if newVal < 1 then newVal = #patternNames end
             self:setParameter(p_idx, newVal)
-            msg, msgT = "Pattern: " .. patternNames[math.floor(newVal)], 30
+            msg, msgT = "Pattern: " .. patternNames[newVal], 30
         elseif page == PAGE_SONG then
             -- Handled by pot3Turn
         elseif page == PAGE_SCALE then
@@ -1117,12 +1127,12 @@ return {
         elseif page == PAGE_PATTERN then
             -- Velocity pattern control
             local p_idx = paramIndexes.velocityPattern
-            local currentVal = self.parameters[p_idx]
+            local currentVal = self.parameters[p_idx] or 1
             local newVal = currentVal + d
             if newVal > #velocityPatternNames then newVal = 1 end
             if newVal < 1 then newVal = #velocityPatternNames end
             self:setParameter(p_idx, newVal)
-            msg, msgT = "VelPat: " .. velocityPatternNames[math.floor(newVal)], 30
+            msg, msgT = "VelPat: " .. velocityPatternNames[newVal], 30
         elseif page == PAGE_SONG then
             if #chain > 0 then
                 chainPos = math.max(1, math.min(#chain, chainPos + d))
