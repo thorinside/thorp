@@ -1021,7 +1021,7 @@ return {
         elseif page == PAGE_PATTERN then
             local patternIdx = math.floor(self.parameters[paramIndexes.pattern])
             local velPatternIdx = math.floor(self.parameters[paramIndexes.velocityPattern])
-            local slot = arps[arpSlot]
+            local slot = arps[selectedSlot]
             
             -- Save rhythm pattern
             slot.pattern = patternIdx
@@ -1035,7 +1035,7 @@ return {
                 slot.velocities[i] = velPattern[i]
             end
             
-            msg, msgT = "S" .. arpSlot .. " -> " .. patternNames[patternIdx] .. " + " .. velPatternName, 30
+            msg, msgT = "S" .. selectedSlot .. " -> " .. patternNames[patternIdx] .. " + " .. velPatternName, 30
         elseif page == PAGE_SONG then
             local p_idx = paramIndexes.playMode
             local currentVal = self.parameters[p_idx]
