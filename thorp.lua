@@ -495,8 +495,8 @@ end
 
 -- Helper function to draw the Slot Page
 local function drawSlotPageUI(self)
-    local arp = arps[arpSlot]
-    drawText(10, 22, ("Slot: %d"):format(arpSlot))
+    local arp = arps[selectedSlot]
+    drawText(10, 22, ("Slot: %d"):format(selectedSlot))
     
     -- Show length/offset controls (slot-specific)
     local len = (arp and arp.length) or 0
@@ -972,7 +972,7 @@ return {
             if slotClipboard then
                 -- Paste: Copy all data from clipboard to current slot
                 local source = slotClipboard
-                local target = arps[arpSlot]
+                local target = arps[selectedSlot]
                 target.pattern = source.pattern
                 target.notes = {}
                 for i, note in ipairs(source.notes) do
@@ -987,10 +987,10 @@ return {
                 end
                 -- Note: Probabilities and octave jump settings are now global performance parameters
                 target.velocityPattern = source.velocityPattern
-                msg, msgT = "Pasted to S" .. arpSlot, 30
+                msg, msgT = "Pasted to S" .. selectedSlot, 30
             else
                 -- Copy: Store current slot in clipboard
-                local source = arps[arpSlot]
+                local source = arps[selectedSlot]
                 slotClipboard = {
                     pattern = source.pattern,
                     notes = {},
@@ -1007,7 +1007,7 @@ return {
                 for i, vel in ipairs(source.velocities) do
                     slotClipboard.velocities[i] = vel
                 end
-                msg, msgT = "Copied S" .. arpSlot, 30
+                msg, msgT = "Copied S" .. selectedSlot, 30
             end
         end
     end,
@@ -1015,12 +1015,12 @@ return {
     pot2Push = function(self)
         if page == PAGE_SLOT then
             if next(latchedNotes) then
-                arps[arpSlot].notes = {}
+                arps[selectedSlot].notes = {}
                 for n in pairs(latchedNotes) do
-                    table.insert(arps[arpSlot].notes, n)
+                    table.insert(arps[selectedSlot].notes, n)
                 end
-                table.sort(arps[arpSlot].notes)
-                msg, msgT = "Notes saved to S" .. arpSlot, 30
+                table.sort(arps[selectedSlot].notes)
+                msg, msgT = "Notes saved to S" .. selectedSlot, 30
             else
                 msg, msgT = "No latched notes to save", 30
             end
@@ -1059,14 +1059,13 @@ return {
     end,
 
     encoder1Turn = function(self, d)
-        if page == PAGE_SLOT or page == PAGE_SONG then
+        if page == PAGE_SLOT then
+            selectedSlot = math.max(1, math.min(16, selectedSlot + d))
+            msg, msgT = "Slot: " .. selectedSlot, 30
+        elseif page == PAGE_SONG then
             arpSlot = math.floor(((arpSlot - 1 + d) % 16) + 1)
             self:setParameter(paramIndexes.arpSlot, arpSlot)
-            if page == PAGE_SLOT then
-                msg, msgT = "Slot: " .. arpSlot, 30
-            else
-                msg, msgT = "Will add slot: " .. arpSlot, 30
-            end
+            msg, msgT = "Will add slot: " .. arpSlot, 30
         elseif page == PAGE_PATTERN then
             -- Rhythm pattern control
             local p_idx = paramIndexes.pattern
@@ -1108,7 +1107,7 @@ return {
 
     encoder2Turn = function(self, d)
         if page == PAGE_SLOT then
-            local slot = arps[arpSlot]
+            local slot = arps[selectedSlot]
             if slot then
                 if not slot.pattern then slot.pattern = 1 end
                 if self.slotEncoderMode == "offset" then
