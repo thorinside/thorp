@@ -303,13 +303,12 @@ for i = 1, 16 do
     arps[i] = {
         pattern = 1,
         notes = {},
-        length = #patterns[patternNames[1]],
+        length = 8,  -- Default length (can be adjusted 1-32)
         offset = 0,
         reverse = false,
         -- Default velocity pattern (Constant) - 50% center for bipolar system
         velocities = {50, 50, 50, 50, 50, 50, 50, 50},
         velocityPattern = 1 -- Index into velocityPatternNames
-        -- Note: Gate probability, gate length, and octave jump settings are now global performance parameters
     }
 end
 
@@ -359,6 +358,10 @@ local page = PAGE_SLOT
 local arpSlot = 1
 local selectedSlot = 1  -- Selected slot for pattern assignment
 local gateLen = 50
+-- Live performance values (immediate effect in Jam mode)
+local liveLength = 8     -- Current length for jam mode (1-32)
+local liveOffset = 0     -- Current offset for jam mode
+local velocityStepCount = 0  -- Independent counter for velocity patterns
 -- Global performance parameters
 local globalOctaveJumpChance = 0    -- 0-100% chance
 local globalOctaveJumpRange = 1     -- ±1-3 octaves
@@ -615,7 +618,7 @@ end
 
 return {
     name = "Thorp",
-    author = "Your Name",
+    author = "Thorinside",
 
     init = function(self)
         self.lastPitch = 0.0
@@ -634,8 +637,8 @@ return {
             chain = self.state.chain or chain
         end
         return {
-            inputs = {kGate, kTrigger, kGate, kCV},
-            inputNames = {"Clock", "Step", "Note Gate", "V/Oct"},
+            inputs = {kGate, kTrigger, kGate, kCV, kTrigger},
+            inputNames = {"Clock", "Step", "Note Gate", "V/Oct", "Reset"},
             outputs = {kStepped, kStepped, kStepped},
             outputNames = {"Gate", "V/Oct", "Velocity"},
             midi = {
@@ -753,12 +756,24 @@ return {
         end
     end,
 
-    -- Renamed from trigger2 to be the handler for Input 2 (kTrigger)
+    -- Renamed from trigger2 to be the handler for Input 2 (kTrigger) and Input 5 (Reset)
     trigger = function(self, input)
         if input == 2 and #chain > 0 then
             msgT = 0
             localStep = localStep + arps[chain[chainPos]].length
             return self:_advance_step()
+        elseif input == 5 then
+            -- Reset trigger: reset all counters to start from step 1
+            stepCount = 0
+            velocityStepCount = 0
+            localStep = 0
+            chainPos = 1
+            pingDir = 1
+            msg, msgT = "Reset", 30
+            -- Clear gate to ensure clean restart
+            self.gateTime = 0
+            self.outputs[1] = 0.0
+            return self.outputs
         end
     end,
 
@@ -767,8 +782,10 @@ return {
         if msgT > 0 then msgT = msgT - 1 end
 
         stepCount = stepCount + 1
+        velocityStepCount = velocityStepCount + 1  -- Increment independent velocity counter
         local raw_note = nil
         local currentStepIndex = 1 -- Track step index for velocity
+        local velocityStepIndex = ((velocityStepCount - 1) % 8) + 1  -- Always cycles 1-8
 
         local playMode = self.parameters[paramIndexes.playMode]
 
@@ -814,11 +831,12 @@ return {
                 end
             end
         elseif playMode == PLAY_MODE_JAM then
-            -- jam mode: use latched notes
+            -- jam mode: use latched notes with live length/offset
             local slot = arps[arpSlot]
             local patternIdx = self.parameters[paramIndexes.pattern] or 1
             local pat = patterns[patternNames[patternIdx]]
-            local len, off, rev = slot.length, slot.offset, slot.reverse
+            local len, off = liveLength, liveOffset  -- Use live values for immediate response
+            local rev = slot.reverse
 
             local notes_for_arp = {}
             for note_val in pairs(latchedNotes) do
@@ -852,17 +870,17 @@ return {
             local currentStepVelocity = baseVelocity -- Default
             
             if playMode == PLAY_MODE_SONG and #chain > 0 then
-                -- Song mode: use slot's saved velocity pattern as bipolar multiplier
-                if currentSlot.velocities and currentSlot.velocities[currentStepIndex] then
-                    local multiplier = currentSlot.velocities[currentStepIndex] / 50.0  -- Bipolar: 50 = 1.0x
+                -- Song mode: use slot's saved velocity pattern with independent counter
+                if currentSlot.velocities and currentSlot.velocities[velocityStepIndex] then
+                    local multiplier = currentSlot.velocities[velocityStepIndex] / 50.0  -- Bipolar: 50 = 1.0x
                     currentStepVelocity = baseVelocity * multiplier
                 end
             else
-                -- Jam mode: use global velocity pattern parameter as bipolar multiplier
+                -- Jam mode: use global velocity pattern with independent counter
                 local velPatternIdx = self.parameters[paramIndexes.velocityPattern] or 1
                 local velPattern = velocityPatterns[velPatternIdx]
-                if velPattern and velPattern[currentStepIndex] then
-                    local multiplier = velPattern[currentStepIndex] / 50.0  -- Bipolar: 50 = 1.0x
+                if velPattern and velPattern[velocityStepIndex] then
+                    local multiplier = velPattern[velocityStepIndex] / 50.0  -- Bipolar: 50 = 1.0x
                     currentStepVelocity = baseVelocity * multiplier
                 end
             end
@@ -1034,9 +1052,9 @@ return {
             
             local slot = arps[selectedSlot]
             
-            -- Save rhythm pattern
+            -- Save rhythm pattern (but keep existing length)
             slot.pattern = patternIdx
-            slot.length = #patterns[patternNames[patternIdx]]
+            -- Note: We no longer change length when assigning pattern
             
             -- Save velocity pattern
             slot.velocityPattern = velPatternIdx
@@ -1061,6 +1079,12 @@ return {
     encoder1Turn = function(self, d)
         if page == PAGE_SLOT then
             selectedSlot = math.max(1, math.min(16, selectedSlot + d))
+            -- Sync live values when switching slots
+            local slot = arps[selectedSlot]
+            if slot then
+                liveLength = slot.length or 8
+                liveOffset = slot.offset or 0
+            end
             msg, msgT = "Slot: " .. selectedSlot, 30
         elseif page == PAGE_SONG then
             arpSlot = math.floor(((arpSlot - 1 + d) % 16) + 1)
@@ -1111,15 +1135,18 @@ return {
             if slot then
                 if not slot.pattern then slot.pattern = 1 end
                 if self.slotEncoderMode == "offset" then
+                    -- Update both slot offset and live offset
                     local maxP = #patterns[patternNames[slot.pattern]]
                     if maxP > 0 then
                         local offset = slot.offset or 0
                         slot.offset = (offset + d) % maxP
+                        liveOffset = slot.offset  -- Update live value for immediate effect
                         msg, msgT = "Offset: " .. math.floor(slot.offset), 30
                     end
                 else -- length
-                    local maxL = #patterns[patternNames[slot.pattern]]
-                    slot.length = math.max(1, math.min(maxL, slot.length + d))
+                    -- Allow length from 1 to 32 regardless of pattern length
+                    slot.length = math.max(1, math.min(32, slot.length + d))
+                    liveLength = slot.length  -- Update live value for immediate effect
                     msg, msgT = "Length: " .. math.floor(slot.length), 30
                 end
             end
@@ -1203,7 +1230,7 @@ return {
 
     draw = function(self)
         -- Header
-        drawTinyText(10, 8, ("THORP - %s"):format(string.upper(pageNames[page])))
+        drawTinyText(10, 8, ("THORP 3.4.1 - %s"):format(string.upper(pageNames[page])))
 
         if page == PAGE_SLOT then
             drawSlotPageUI(self)
@@ -1250,6 +1277,7 @@ return {
                 localStep = 0
             elseif playMode == PLAY_MODE_JAM then
                 latchedNotes = {}
+                -- Note: velocityStepCount is NOT reset, allowing velocity pattern to continue seamlessly
             end
             msg, msgT = "Play Mode: " .. playModeLabels[playMode], 30
         elseif id == paramIndexes.arpSlot then
