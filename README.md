@@ -48,6 +48,9 @@ The **Pattern** page is where you work with rhythmic and velocity patterns, plus
 
 **Step-by-step guide:**
 
+
+- **Length and Offset:** Use **Encoder 2** to adjust the length and offset of the arpeggio. Press **Encoder 2** to toggle between length and offset mode.
++**Length (Immediate in Jam Mode) & Offset:** In Jam mode, changes to Length are applied instantly to the running arpeggio thanks to the new immediate update feature. Use **Encoder 2** to adjust Length or Offset; press **Encoder 2** again to switch between the two modes.
 1.  **Select Rhythm Pattern:** Use **Encoder 1** to choose a rhythmic pattern from the list.
 2.  **Select Velocity Pattern:** Use **Encoder 2** to choose a velocity pattern from the list.
 3.  **Adjust Gate Probability:** Use **Pot 1** to set the probability (0-100%) that each step's gate will fire.
