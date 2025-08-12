@@ -600,7 +600,7 @@ local function drawHelpScreenUI(self)
             local p_text = "+ Page"
             drawTinyText(255 - #p_text * 4 - 5, y + 10, p_text)
             -- Line 2
-            drawTinyText(5, y + 18, "Exit")
+            drawTinyText(5, y + 18, "--")
             if currentHelp.encoderPush then
                 drawCenteredTinyText(40, 90, y + 18, currentHelp.encoders[1] .. "/" .. currentHelp.encoderPush[1])
                 drawCenteredTinyText(130, 90, y + 18, currentHelp.encoders[2] .. "/" .. currentHelp.encoderPush[2])
@@ -1208,11 +1208,6 @@ return {
         page = page - 1
         if page < PAGE_SLOT then page = PAGE_SONG end
         self:activateTakeoverForPageChange(lastPage, page)
-    end,
-
-    button2Push = function(self)
-        -- Exit UI
-        exit()
     end,
 
     button3Push = function(self)
