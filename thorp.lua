@@ -1221,7 +1221,7 @@ return {
 
     draw = function(self)
         -- Header
-        drawTinyText(10, 8, ("THORP 3.4.1 - %s"):format(string.upper(pageNames[page])))
+        drawTinyText(10, 8, ("THORP 3.4.4 - %s"):format(string.upper(pageNames[page])))
 
         if page == PAGE_SLOT then
             drawSlotPageUI(self)
