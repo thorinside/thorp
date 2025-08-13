@@ -201,7 +201,7 @@ local potDefinitions = {
         {type = POT_TYPE_CONTINUOUS, label = "Gate Len", initial = POT_INITIAL_VALUES.GATE_LENGTH}
     },
     [PAGE_SONG] = {
-        {type = POT_TYPE_CONTINUOUS, label = "G.Oct Jump", initial = POT_INITIAL_VALUES.GLOBAL_OCT},
+        {type = POT_TYPE_CONTINUOUS, label = "Oct Jump", initial = POT_INITIAL_VALUES.GLOBAL_OCT},
         {type = POT_TYPE_PUSH_ONLY, label = "Play Mode"},
         {type = POT_TYPE_CONTINUOUS, label = "Seq Mode", initial = POT_INITIAL_VALUES.SEQ_MODE}
     }
@@ -385,7 +385,7 @@ local helpText = {
         encoders = {"Root", "Scale"}
     },
     [PAGE_SONG] = {
-        pots = {"G.Oct Jump", "Play Mode", "Seq Mode"},
+        pots = {"Oct Jump", "Play Mode", "Seq Mode"},
         encoders = {"Add Slot", "Position"}
     }
 }
@@ -411,11 +411,10 @@ local paramIndexes = {
     playMode = 6,
     rootNote = 7,
     sequenceMode = 8,
-    globalOctaveJump = 9,
-    globalProbability = 10,
-    globalVelocity = 11,
-    velocityPattern = 12,
-    stepProbability = 13
+    globalProbability = 9,
+    globalVelocity = 10,
+    velocityPattern = 11,
+    stepProbability = 12
 }
 
 -- Pot action handlers by page and pot number
@@ -442,7 +441,8 @@ local potActions = {
     },
     [PAGE_SONG] = {
         [1] = function(self, value)
-            self:setParameter(paramIndexes.globalOctaveJump, value * 100)
+            globalOctaveJumpChance = value * 100
+            msg, msgT = "Oct Jump: " .. math.floor(globalOctaveJumpChance) .. "%", 30
         end,
         [3] = function(self, value)
             local p_idx = paramIndexes.sequenceMode
@@ -549,8 +549,8 @@ end
 
 -- Helper function to draw the Scale Page
 local function drawScalePageUI(self)
-    -- Line 1: Oct Jump | Oct Range | Gate Len (pot-controlled)
-    drawText(10, 22, ("Oct Jump: %3d%% | Oct Range: ±%d | Gate Len: %3d%%"):format(
+    -- Line 1: Oct Jump | Range | Gate Len (pot-controlled)
+    drawText(10, 22, ("Oct Jump: %3d%% | Range: ±%d | Gate Len: %3d%%"):format(
         globalOctaveJumpChance, globalOctaveJumpRange, math.floor(gateLen)))
     
     -- Line 2: Root | Scale (encoder-controlled)
@@ -576,11 +576,10 @@ local function drawSongPageUI(self)
         table.insert(chain_str_tbl, slot_str)
     end
     drawText(10, 36, ("Chain: %s"):format(table.concat(chain_str_tbl, "+")))
-    -- Display parameters in pot order: G.Oct | Mode | Seq
-    local globalOct = self.parameters[paramIndexes.globalOctaveJump]
+    -- Display parameters in pot order: Oct Jump | Mode | Seq
     local playModeStr = playModeLabels[playMode]
-    drawText(10, 50, ("G.Oct: %d%% | Mode: %s | Seq: %s"):format(
-        math.floor(globalOct), playModeStr, sequenceModeLabels[sequenceMode]))
+    drawText(10, 50, ("Oct Jump: %d%% | Mode: %s | Seq: %s"):format(
+        math.floor(globalOctaveJumpChance), playModeStr, sequenceModeLabels[sequenceMode]))
 end
 
 -- Helper function to draw the Help Screen
@@ -658,7 +657,6 @@ return {
                 [paramIndexes.sequenceMode] = {
                     "Sequence Mode", sequenceModeLabels, 1
                 },
-                [paramIndexes.globalOctaveJump] = {"Global Octave Jump", 0, 100, 0, kPercent},
                 [paramIndexes.globalProbability] = {"Global Probability", 0, 100, 100, kPercent},
                 [paramIndexes.globalVelocity] = {"Global Velocity", 0, 100, 100, kPercent},
                 [paramIndexes.velocityPattern] = {"Velocity Pattern", velocityPatternNames, 1},
@@ -888,10 +886,8 @@ return {
             local globalVelMod = self.parameters[paramIndexes.globalVelocity] / 100.0
             currentStepVelocity = math.max(0, math.min(100, currentStepVelocity * globalVelMod))
             if globalOctaveJumpChance > 0 then
-                -- Apply global octave jump modifier  
-                local globalOctMod = self.parameters[paramIndexes.globalOctaveJump] / 100.0
-                local effectiveOctaveChance = globalOctaveJumpChance * globalOctMod
-                if math.random(1, 100) <= effectiveOctaveChance then
+                -- Apply octave jump
+                if math.random(1, 100) <= globalOctaveJumpChance then
                     local jumpRange = globalOctaveJumpRange
                     local octaveShift = math.random(-jumpRange, jumpRange) * 12
                     raw_note = math.max(0, math.min(127, raw_note + octaveShift))
